@@ -51,11 +51,11 @@ contract IcareumCrowdsale is Adminable, Pausable {
     // факт окончания продажи
     bool public crowdsaleFinished = false; 
     // автопауза продажи по достижению новой стадии
-    bool public mainsaleAutopaused = false;   
+ //   bool public mainsaleAutopaused = false;   
     // список приглашенных инвесторов
-    mapping (address => bool) internal isInvestor;  
+    mapping (address => bool) public isInvestor;  
     // соответствие реферралов
-    mapping (address => address) internal referrerAddr;
+    mapping (address => address) public referrerAddr;
     /**
     * событие покупки токенов
     * @param beneficiary тот, кто получил токены
@@ -116,9 +116,6 @@ contract IcareumCrowdsale is Adminable, Pausable {
     // проверка баланса токенов на адресе
     function tokenBalance(address _addr) view public returns (uint256) {
         return token.balanceOf(_addr);
-    }
-    function checkIfInvestor(address _addr) view public returns (bool) {
-        return isInvestor[_addr];
     }
 
     ///////////////////////////////////
@@ -234,38 +231,29 @@ contract IcareumCrowdsale is Adminable, Pausable {
         emit Finished();
     }
     // владелец разрешает возвраты если softcap не достигнут
-    function allowRefunds() public
-    onlyFailed 
-    onlyOwner {
-    	vault.enableRefunds();
-    }
+    // function allowRefunds() public
+    // onlyFailed 
+    // onlyOwner {
+    // 	vault.enableRefunds();
+    // }
     // запрос владельем на выписку средств с хранилища если достигнут softcap
     function claimVaultFunds() public
     onlyOwner {
     	require(mainsaleMintedTokens >= tokenSoftCap);
     	vault.close(fundWallet);
     }
-    // ** audit
-    // ** избыточная функция continueMainsale(), можно вызывать unpause(), т.к. контракт уже наследует Pausable с аналогичным функционалом
-
     // владелец снимает с автопаузы
-    function continueMainsale() public 
-    onlyOwner {
-        mainsaleAutopaused = false;
-    }
+    // function continueMainsale() public 
+    // onlyOwner {
+    //     mainsaleAutopaused = false;
+    // }
 
     ///////////////////////////////////
     ///	  Операции для инвесторов   ///
     ///////////////////////////////////
 
     function () public payable {
-        // ** audit
-        // ** избыточный код, можно просто вызвать buyTokens()
-
-        _preValidatePurchase(msg.sender,msg.value);
-
-        _buyTokens(msg.sender,msg.value);
-
+        buyTokens();
     }
     // возвращает количество фактически полученных токенов
     function buyTokens() public payable returns (uint256) {
@@ -275,9 +263,12 @@ contract IcareumCrowdsale is Adminable, Pausable {
         return _buyTokens(msg.sender,msg.value);
 
     }
-    // запрос на возврат средств инвестором, возможно только если цель не достигнута и после установки владельцем стадии возврата 
+    // запрос на возврат средств инвестором, возможно только если цель не достигнута  
     function claimRefund() public 
     onlyFailed {
+        if (vault.state() == RefundVault.State.Active) {
+            vault.enableRefunds();
+        } 
     	vault.refund(msg.sender);
     }
 
@@ -288,15 +279,19 @@ contract IcareumCrowdsale is Adminable, Pausable {
     // функция покупки токенов инвестором
     function _buyTokens(address _buyer, uint256 _weiAmount) internal returns (uint256) {
         uint256 weiAmount = _weiAmount;
-        // ** audit
-        // ** если на контракт пришло не кратное цене количество эфира, то остаток от деления просто теряется, а не возвращается покупателю
-
         uint256 tokenAmount = weiAmount.div(rateOfTokenInWei()); 
         //ограничение минимальной суммы покупки
         require(tokenAmount >= 100);
 
-        uint256 tokensLeft = _tokensLeftOnStage();
-        //возврат сдачи если токенов по текущей цене меньше 
+        //вовзрат сдачи если сумма в веях не кратна стоимости токенов
+        uint256 change = weiAmount.sub(tokenAmount.mul(rateOfTokenInWei()));
+        if (change > 0) {
+            weiAmount = weiAmount.sub(change);
+            _buyer.transfer(change);
+        }
+
+        //возврат сдачи если токенов по текущей цене меньше
+        uint256 tokensLeft = _tokensLeftOnStage(); 
         if (tokenAmount > tokensLeft) {
             uint256 sumToReturn = tokenAmount.sub(tokensLeft).mul(rateOfTokenInWei());
             tokenAmount = tokensLeft;
@@ -304,12 +299,9 @@ contract IcareumCrowdsale is Adminable, Pausable {
             _buyer.transfer(sumToReturn);
         }
 
-        if (tokenAmount == tokensLeft) {
-            // ** audit
-            // ** избыточная переменная mainsaleAutopaused, можно заменить просто на paused, т.к. контракт уже наследует Pausable с аналогичным функционалом
-
+        if (tokenAmount == tokensLeft) {                 
             //достигнут предел токенов по текущей цене, ставим на паузу
-            mainsaleAutopaused = true;
+            paused = true;
             emit MainsaleStageFinished(_tokenPriceMultiplier().sub(3));           
         }
      
@@ -370,7 +362,7 @@ contract IcareumCrowdsale is Adminable, Pausable {
     // множитель стоимости токена относительно базы 0.1$
     function _tokenPriceMultiplier() view internal returns (uint256) {
         if (mainsaleMintedTokens < mainsaleTokenCap1) return 4;
-        else if(mainsaleMintedTokens >= mainsaleTokenCap1 && mainsaleMintedTokens < mainsaleTokenCap2) return 5;
+        else if(mainsaleMintedTokens < mainsaleTokenCap2) return 5;
         else return 6;
     }
 
@@ -378,11 +370,8 @@ contract IcareumCrowdsale is Adminable, Pausable {
     function _preValidatePurchase(address _beneficiary, uint256 _amount) view internal
     onlyMainsale 
     whenNotPaused {
-        // ** audit
-        // ** избыточная переменная mainsaleAutopaused, можно заменить просто на paused, т.к. контракт уже наследует Pausable с аналогичным функционалом
-
         // при достижении новой стадии продажа останавливается до запуска вручную владельем
-        require(!mainsaleAutopaused);
+     //   require(!mainsaleAutopaused);
         // продолжить только если адрес пользователя есть в списке приглашенных инвесторов
         require(isInvestor[_beneficiary]);
         // инвестор не может прислать нулевое количество эфира

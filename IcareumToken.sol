@@ -18,10 +18,8 @@ contract IcareumToken is ERC20, Ownable {
 
   event Mint(address indexed to, uint256 amount);
   event MintFinished();
-  //audit
-  // избыточное определение событий, они уже есть в ERC20
   event Transfer(address indexed from, address indexed to, uint256 value);
-  event Approval(address indexed owner, address indexed spender, uint256 value);
+	event Approval(address indexed owner, address indexed spender, uint256 value);
 
   modifier ifTransferAllowed() {
      require(mintingFinished);
@@ -55,8 +53,6 @@ contract IcareumToken is ERC20, Ownable {
     return balances[_owner];
   }
 
-  //audit
-  // избыточный getter для totalSupply создается автоматически
   function totalSupply() public view returns (uint256) {
     return totalSupply;
   }
