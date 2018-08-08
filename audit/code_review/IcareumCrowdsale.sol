@@ -29,7 +29,7 @@ contract IcareumCrowdsale is Adminable, Pausable {
 
     // токены пресейла
     // EW Ok
-    uint256 public constant presaleTokenCap = 3000000;
+    uint256 public constant presaleTokenCap = 6000000;
     // EW Ok
     uint256 public presaleMintedTokens = 0;
     // максимальное количество токенов на каждом этапе основного сейла
@@ -212,7 +212,7 @@ contract IcareumCrowdsale is Adminable, Pausable {
         vault = new RefundVault();
         // эмиссия резревных токенов
         // EW Ok
-        _mintTokens(_reserveWallet,7000000);
+        _mintTokens(_reserveWallet,4000000);
     }
     // запуск продаж, изначально контракт находится в стадии эмиссии токенов этапа пресейла. После запуска эмиссия пресейла будет невозможна
     // EW Ok
